@@ -1,0 +1,268 @@
+---
+title: "ReportAnalysis"
+author: "ZH"
+date: "8/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+Task
+----------------------------------
+
+Create a report describing model building  using cross validation
+
+
+
+
+
+
+
+
+
+
+
+
+
+setting up and adding the library needed 
+----------------------------------
+
+``` r
+library("doParallel")
+library("randomForest")
+library("e1071")
+library("caret")
+library("doParallel")
+
+
+setwd("C:\Users\LENOVO\Documents\datasciencecoursera\assignement_ml")
+
+set.seed(1603)
+
+##Downloading the data 
+
+training_f<- 'pml-training.csv'
+testing_f <- 'pml-testing.csv'
+trainingUrl <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+testingUrl <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+download.file(trainingUrl,training_f)
+download.file(testingUrl,testing_f)
+```
+
+
+cleaning_data from NA for both training data and testing
+----------------------------------
+```r
+
+#training dataset
+
+
+training.df <- read.csv(training_f,na.strings = c("NA","","#DIV/0!"))
+training.df <-training.df[,colSums(is.na(training.df))==0]
+dim(training.df)
+
+
+#testing dataset 
+testing.df <- read.csv(testing_f,na.strings = c("NA","","#DIV/0!"))
+testing.df <-testing.df[,colSums(is.na(testing.df))==0]
+dim(testing.df)
+```
+
+
+reduce the number of variables that would impact the ^prediction
+----------------------------------
+
+
+```r
+
+Training.df <- training.df[,-c(1,7)]
+Testing.df <- testing.df[,-c(1,7)]
+dim(Training.df)
+dim(Testing.df)
+```
+```
+1] 19622    58
+[1] 20 58
+```
+
+```r
+
+
+Training.nzv<-nzv(Training.df[,-ncol(Training.df)],saveMetrics=TRUE)
+rownames
+```
+```
+[1] "user_name"            "raw_timestamp_part_1" "raw_timestamp_part_2"
+ [4] "cvtd_timestamp"       "new_window"           "roll_belt"           
+ [7] "pitch_belt"           "yaw_belt"             "total_accel_belt"    
+[10] "gyros_belt_x"         "gyros_belt_y"         "gyros_belt_z"        
+[13] "accel_belt_x"         "accel_belt_y"         "accel_belt_z"        
+[16] "magnet_belt_x"        "magnet_belt_y"        "magnet_belt_z"       
+[19] "roll_arm"             "pitch_arm"            "yaw_arm"             
+[22] "total_accel_arm"      "gyros_arm_x"          "gyros_arm_y"         
+[25] "gyros_arm_z"          "accel_arm_x"          "accel_arm_y"         
+[28] "accel_arm_z"          "magnet_arm_x"         "magnet_arm_y"        
+[31] "magnet_arm_z"         "roll_dumbbell"        "pitch_dumbbell"      
+[34] "yaw_dumbbell"         "total_accel_dumbbell" "gyros_dumbbell_x"    
+[37] "gyros_dumbbell_y"     "gyros_dumbbell_z"     "accel_dumbbell_x"    
+[40] "accel_dumbbell_y"     "accel_dumbbell_z"     "magnet_dumbbell_x"   
+[43] "magnet_dumbbell_y"    "magnet_dumbbell_z"    "roll_forearm"        
+[46] "pitch_forearm"        "yaw_forearm"          "total_accel_forearm" 
+[49] "gyros_forearm_x"      "gyros_forearm_y"      "gyros_forearm_z"     
+[52] "accel_forearm_x"      "accel_forearm_y"      "accel_forearm_z"     
+[55] "magnet_forearm_x"     "magnet_forearm_y"     "magnet_forearm_z"  
+```
+
+```r
+dim(Training.nzv)[1]
+```
+
+```
+[1] 57
+```
+```
+inTrain     <- createDataPartition(Training.df$classe, p = 0.6, list = FALSE)
+inTraining  <- Training.df[inTrain,]
+inTest      <- Training.df[-inTrain,]
+dim(inTraining);dim(inTest)
+```
+
+
+
+ML Model with cross validation
+----------------------------------
+
+```r
+
+mlFilename <- "ml.RData"
+if (!file.exists(mlFilename)) {
+  
+  
+  ncores <- makeCluster(detectCores() - 1)
+  registerDoParallel(cores=ncores)
+  getDoParWorkers() # 3    
+  
+  # use Random Forest method with Cross Validation, 4 folds
+  ml <- train(classe ~ .
+                   , data = inTraining
+                   , method = "rf"
+                   , metric = "Accuracy"  # categorical outcome variable 
+                   , preProcess=c("center", "scale") # attempt to improve accuracy by normalising
+                   , trControl=trainControl(method = "cv"
+                                            , number = 4 # folds of the training data
+                                            , p= 0.60
+                                            , allowParallel = TRUE 
+                   )
+  )
+  
+  save(ml, file = "ml.RData")
+ 
+  stopCluster(ncores)
+} else {
+  # Use cached model  
+  load(file = mlFilename, verbose = TRUE)
+}
+
+
+print(ml,digits=4)
+```
+```
+
+Random Forest 
+
+11776 samples
+   55 predictor
+    5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+Pre-processing: centered (73), scaled (73) 
+Resampling: Cross-Validated (4 fold) 
+Summary of sample sizes: 8831, 8831, 8834, 8832 
+Resampling results across tuning parameters:
+
+  mtry  Accuracy  Kappa 
+   2    0.9841    0.9799
+  37    0.9969    0.9961
+  73    0.9952    0.9940
+
+Accuracy was used to select the optimal model using the largest value.
+The final value used for the model was mtry = 37.
+```
+
+prediction
+----------------------------------
+
+
+
+
+```r
+predTest <- predict(ml,newdata = inTest)
+
+ml$finalModel
+
+```
+```
+Call:
+ randomForest(x = x, y = y, mtry = min(param$mtry, ncol(x))) 
+               Type of random forest: classification
+                     Number of trees: 500
+No. of variables tried at each split: 37
+
+        OOB estimate of  error rate: 0.18%
+Confusion matrix:
+     A    B    C    D    E  class.error
+A 3348    0    0    0    0 0.0000000000
+B    3 2276    0    0    0 0.0013163668
+C    0    5 2045    4    0 0.0043816943
+D    0    0    2 1923    5 0.0036269430
+E    0    0    0    2 2163 0.0009237875
+```
+
+```r
+
+varImp(ml)
+``` 
+
+
+```
+  only 20 most important variables shown (out of 73)
+
+                               Overall
+## raw_timestamp_part_1           100.000
+## roll_belt                       38.028
+## pitch_forearm                   25.147
+## magnet_dumbbell_z               17.544
+## magnet_dumbbell_y               14.071
+## yaw_belt                        13.417
+## roll_forearm                    11.678
+## cvtd_timestamp30/11/2011 17:12   9.221
+## cvtd_timestamp02/12/2011 14:58   8.825
+## cvtd_timestamp02/12/2011 13:33   7.738
+## magnet_dumbbell_x                7.522
+## accel_belt_z                     6.346
+## accel_dumbbell_y                 6.232
+## roll_dumbbell                    6.113
+## magnet_belt_y                    5.528
+## cvtd_timestamp28/11/2011 14:15   5.464
+## cvtd_timestamp05/12/2011 11:25   5.222
+## accel_forearm_x                  5.173
+## cvtd_timestamp05/12/2011 11:24   4.470
+## cvtd_timestamp05/12/2011 14:24   4.384
+```
+
+quiz answers
+----------------------------------
+```r
+
+
+print(predict(ml, newdata=Testing.df))
+```
+```
+
+[1] B A B A A E D B A A B C B A E E A B B B A B C D E
+
+```
